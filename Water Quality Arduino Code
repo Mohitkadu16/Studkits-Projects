@@ -1,0 +1,275 @@
+<-- Water Quality Arduino Code -->
+#include <Wire.h>
+#include <LiquidCrystal_I2C.h>
+#include <DHT.h>
+
+// Initialize I2C LCD (address, columns, rows)
+LiquidCrystal_I2C lcd(0x27, 16, 2); // Change to 0x3F if not working
+
+// DHT11 sensor setup
+#define DHT_PIN 2          // Digital pin for DHT11
+#define DHT_TYPE DHT11
+DHT dht(DHT_PIN, DHT_TYPE);
+
+// TDS sensor setup
+#define TDS_PIN A0
+#define VREF 3.3           // Analog reference voltage
+#define SAMPLE_COUNT 30
+
+// Buzzer and LED pins
+#define BUZZER_PIN 9
+#define LED_PIN 10
+
+// TDS threshold for alerts (in ppm)
+#define TDS_THRESHOLD_HIGH 500
+#define TDS_THRESHOLD_LOW 50
+
+// Temperature threshold for alerts
+#define TEMP_THRESHOLD_HIGH 40  // °C
+#define TEMP_THRESHOLD_LOW 5    // °C
+
+// Humidity threshold
+#define HUMIDITY_THRESHOLD_HIGH 80  // %
+#define HUMIDITY_THRESHOLD_LOW 20   // %
+
+// Backlight control
+#define BACKLIGHT_BRIGHTNESS 255  // 0-255 (255 = maximum)
+
+// Variables
+float tdsValue = 0;
+float waterQuality = 0;
+float temperature = 0;
+float humidity = 0;
+
+void setup() {
+  Serial.begin(9600);
+  
+  // Initialize DHT sensor
+  dht.begin();
+  
+  // Initialize LCD with manual backlight control
+  lcd.init();
+  
+  // Backlight setup
+  lcd.backlight();                    // Standard backlight on
+  lcd.setBacklight(HIGH);             // Manual backlight high
+  lcd.setBacklight(BACKLIGHT_BRIGHTNESS); // Maximum brightness
+  
+  lcd.clear();
+  
+  pinMode(BUZZER_PIN, OUTPUT);
+  pinMode(LED_PIN, OUTPUT);
+  
+  digitalWrite(BUZZER_PIN, LOW);
+  digitalWrite(LED_PIN, LOW);
+
+  // Welcome message with backlight test
+  lcd.setCursor(0, 0);
+  lcd.print("Water & Air Qual");
+  lcd.setCursor(0, 1);
+  lcd.print("System Starting");
+  
+  // Test backlight blinking to verify control
+  for(int i = 0; i < 3; i++) {
+    lcd.setBacklight(LOW);
+    delay(300);
+    lcd.setBacklight(HIGH);
+    delay(300);
+  }
+  
+  delay(1000);
+  lcd.clear();
+  
+  // Final backlight setting
+  lcd.setBacklight(HIGH);
+  lcd.backlight();
+}
+
+void loop() {
+  // Read all sensors
+  readDHT();
+  readTDS();
+  calculateWaterQuality();
+  
+  // Display results
+  displayOnLCD();
+  
+  // Check alerts
+  checkAlerts();
+  
+  // Print to serial monitor (for debugging)
+  printToSerial();
+  
+  delay(2000); // Wait 2 seconds between readings
+}
+
+void readDHT() {
+  // Read temperature and humidity from DHT11
+  temperature = dht.readTemperature(); // Celsius
+  humidity = dht.readHumidity();
+  
+  // Check if any reads failed
+  if (isnan(temperature) || isnan(humidity)) {
+    Serial.println("Failed to read from DHT sensor!");
+    temperature = 0;
+    humidity = 0;
+  }
+}
+
+void readTDS() {
+  int analogBuffer[SAMPLE_COUNT];
+  int analogBufferTemp[SAMPLE_COUNT];
+  
+  // Take multiple samples for accuracy
+  for (int i = 0; i < SAMPLE_COUNT; i++) {
+    analogBuffer[i] = analogRead(TDS_PIN);
+    delay(10);
+  }
+  
+  // Sort samples (bubble sort)
+  for (int i = 0; i < SAMPLE_COUNT - 1; i++) {
+    for (int j = i + 1; j < SAMPLE_COUNT; j++) {
+      if (analogBuffer[i] > analogBuffer[j]) {
+        analogBufferTemp[i] = analogBuffer[i];
+        analogBuffer[i] = analogBuffer[j];
+        analogBuffer[j] = analogBufferTemp[i];
+      }
+    }
+  }
+  
+  // Get median value
+  float analogValue = analogBuffer[SAMPLE_COUNT / 2];
+  
+  // Convert to voltage
+  float voltage = analogValue * VREF / 1024.0;
+  
+  // Convert to TDS value (ppm) - approximate conversion
+  tdsValue = (133.42 * voltage * voltage * voltage - 255.86 * voltage * voltage + 857.39 * voltage) * 0.5;
+}
+
+void calculateWaterQuality() {
+  // Simple water quality calculation based on TDS
+  // Lower TDS = better quality (for drinking water)
+  if (tdsValue < 300) {
+    waterQuality = 90 - (tdsValue / 300.0 * 30); // 60-90% range
+  } else if (tdsValue < 600) {
+    waterQuality = 70 - ((tdsValue - 300) / 300.0 * 40); // 30-70% range
+  } else {
+    waterQuality = 30 - ((tdsValue - 600) / 400.0 * 25); // 5-30% range
+  }
+  
+  // Ensure water quality stays within bounds
+  waterQuality = constrain(waterQuality, 0, 100);
+}
+
+void displayOnLCD() {
+  lcd.clear();
+  
+  // First row: TDS and Temperature
+  lcd.setCursor(0, 0);
+  lcd.print("TDS:");
+  lcd.print((int)tdsValue);
+  lcd.print(" T:");
+  lcd.print((int)temperature);
+  lcd.print("C");
+  
+  // Second row: Quality and Humidity
+  lcd.setCursor(0, 1);
+  lcd.print("Q:");
+  lcd.print((int)waterQuality);
+  lcd.print("% H:");
+  lcd.print((int)humidity);
+  lcd.print("%");
+}
+
+void checkAlerts() {
+  bool alertTriggered = false;
+  
+  // Check for high TDS (poor water quality)
+  if (tdsValue > TDS_THRESHOLD_HIGH) {
+    displayAlert("HIGH TDS!", String((int)tdsValue) + "ppm");
+    alertTriggered = true;
+  }
+  // Check for very low TDS (possible sensor error)
+  else if (tdsValue < TDS_THRESHOLD_LOW && tdsValue > 0) {
+    digitalWrite(LED_PIN, HIGH); // Solid LED for low TDS warning
+    lcd.setBacklight(128); // Medium brightness
+  }
+  // Check temperature alerts
+  else if (temperature > TEMP_THRESHOLD_HIGH) {
+    displayAlert("HIGH TEMP!", String((int)temperature) + "C");
+    alertTriggered = true;
+  }
+  else if (temperature < TEMP_THRESHOLD_LOW && temperature > -10) {
+    displayAlert("LOW TEMP!", String((int)temperature) + "C");
+    alertTriggered = true;
+  }
+  // Check humidity alerts
+  else if (humidity > HUMIDITY_THRESHOLD_HIGH) {
+    displayAlert("HIGH HUMID!", String((int)humidity) + "%");
+    alertTriggered = true;
+  }
+  else if (humidity < HUMIDITY_THRESHOLD_LOW && humidity > 0) {
+    displayAlert("LOW HUMID!", String((int)humidity) + "%");
+    alertTriggered = true;
+  }
+  else {
+    digitalWrite(LED_PIN, LOW); // Turn off LED
+    lcd.setBacklight(HIGH); // Full backlight
+  }
+  
+  // If no alerts, ensure buzzer is off
+  if (!alertTriggered) {
+    digitalWrite(BUZZER_PIN, LOW);
+  }
+}
+
+void displayAlert(String alertType, String value) {
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print("ALERT:");
+  lcd.print(alertType);
+  lcd.setCursor(0, 1);
+  lcd.print("Value: ");
+  lcd.print(value);
+  
+  // Flash backlight during alert
+  for(int i = 0; i < 5; i++) {
+    lcd.setBacklight(LOW);
+    digitalWrite(BUZZER_PIN, HIGH);
+    digitalWrite(LED_PIN, HIGH);
+    delay(200);
+    lcd.setBacklight(HIGH);
+    digitalWrite(BUZZER_PIN, LOW);
+    digitalWrite(LED_PIN, LOW);
+    delay(200);
+  }
+  
+  // Return to normal display and backlight
+  lcd.setBacklight(HIGH);
+  displayOnLCD();
+}
+
+void printToSerial() {
+  Serial.print("TDS: ");
+  Serial.print(tdsValue);
+  Serial.print(" ppm | Quality: ");
+  Serial.print(waterQuality);
+  Serial.print("% | Temp: ");
+  Serial.print(temperature);
+  Serial.print("C | Humidity: ");
+  Serial.print(humidity);
+  Serial.println("%");
+}
+
+// Manual backlight control function
+void setBacklightManual(bool state) {
+  if (state) {
+    lcd.backlight();
+    lcd.setBacklight(HIGH);
+    lcd.setBacklight(BACKLIGHT_BRIGHTNESS);
+  } else {
+    lcd.noBacklight();
+    lcd.setBacklight(LOW);
+  }
+}
