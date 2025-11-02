@@ -1,0 +1,30 @@
+// ------------------------------------------------------------
+// Project: Automatic Water Tap using IR Sensor & 5V Pump
+// ------------------------------------------------------------
+
+#define IR_SENSOR_PIN 2
+#define RELAY_PIN 9
+
+void setup() {
+  Serial.begin(9600);
+  pinMode(IR_SENSOR_PIN, INPUT);
+  pinMode(RELAY_PIN, OUTPUT);
+  digitalWrite(RELAY_PIN, LOW);  // Keep relay off initially
+  Serial.println("Automatic Tap Initialized");
+}
+
+void loop() {
+  int sensorState = digitalRead(IR_SENSOR_PIN);
+
+  // Some IR sensors output LOW when object detected, adjust if needed
+  if (sensorState == LOW) {
+    digitalWrite(RELAY_PIN, HIGH); // Activate relay -> Pump ON
+    Serial.println("Hand Detected - Pump ON");
+  } 
+  else {
+    digitalWrite(RELAY_PIN, LOW);  // Deactivate relay -> Pump OFF
+    Serial.println("No Hand - Pump OFF");
+  }
+
+  delay(100);
+}
