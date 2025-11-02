@@ -1,20 +1,21 @@
-#define PIR_PIN 2
+#define IR_PIN 2
 #define LED_PIN 8
 #define BUZZER_PIN 9
 
 void setup() {
-  pinMode(PIR_PIN, INPUT);
+  pinMode(IR_PIN, INPUT);
   pinMode(LED_PIN, OUTPUT);
   pinMode(BUZZER_PIN, OUTPUT);
   Serial.begin(9600);
-  Serial.println("Motion Detector Active...");
+  Serial.println("IR Motion Detector Active...");
 }
 
 void loop() {
-  int motionDetected = digitalRead(PIR_PIN);
+  int sensorState = digitalRead(IR_PIN);
 
-  if (motionDetected == HIGH) {
-    Serial.println("Motion Detected!");
+  // Note: Some IR modules output LOW when object detected
+  if (sensorState == LOW) {
+    Serial.println("Motion/Object Detected!");
     digitalWrite(LED_PIN, HIGH);
     digitalWrite(BUZZER_PIN, HIGH);
     delay(1000); // Alert duration
