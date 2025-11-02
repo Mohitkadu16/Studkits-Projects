@@ -9,3 +9,12 @@ All Projects Algo &amp; Flowchart in SVG and PNG format
 - Flowchart:
 [Water Quality SVG](https://github.com/Mohitkadu16/Studkits-Projects/blob/main/water%20quality%20flow.svg)
 [Water Quality PNG](https://github.com/Mohitkadu16/Studkits-Projects/blob/main/flowchart%20of%20water%20quality.png)
+
+# Water Quality Monitoring System
+- Algorithm:
+[Intruder Alert SVG](https://github.com/Mohitkadu16/Studkits-Projects/blob/main/intruder%20alert%20algo.svg)
+[Intruder Alert PNG](https://github.com/Mohitkadu16/Studkits-Projects/blob/main/algo%20of%20intruder%20alert.png)
+
+- Flowchart:
+[Intruder Alert SVG](https://github.com/Mohitkadu16/Studkits-Projects/blob/main/intruder%20alert%20flow.svg)
+[Intruder Alert PNG](https://github.com/Mohitkadu16/Studkits-Projects/blob/main/flowchart%20of%20intruder%20alert.png)
