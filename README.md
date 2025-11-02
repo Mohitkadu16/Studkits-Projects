@@ -5,3 +5,7 @@ All Projects Algo &amp; Flowchart in SVG and PNG format
 - Algorithm:
 [Water Quality SVG]()
 [Water Quality PNG]()
+
+-Flowchart:
+[Water Quality SVG]()
+[Water Quality PNG]()
