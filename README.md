@@ -1,7 +1,7 @@
 # Studkits-Projects
 All Projects Algo &amp; Flowchart in SVG and PNG format 
 
-# Water Quality Monitoring System
+# Water Quality Monitoring System using IOT
 - Algorithm:
 [Water Quality SVG](https://github.com/Mohitkadu16/Studkits-Projects/blob/main/water%20quality%20algo.svg)
 [Water Quality PNG](https://github.com/Mohitkadu16/Studkits-Projects/blob/main/algo%20of%20water%20quality.png)
@@ -10,7 +10,7 @@ All Projects Algo &amp; Flowchart in SVG and PNG format
 [Water Quality SVG](https://github.com/Mohitkadu16/Studkits-Projects/blob/main/water%20quality%20flow.svg)
 [Water Quality PNG](https://github.com/Mohitkadu16/Studkits-Projects/blob/main/flowchart%20of%20water%20quality.png)
 
-# Water Quality Monitoring System
+# Intruder Alert Sysytem using IOT
 - Algorithm:
 [Intruder Alert SVG](https://github.com/Mohitkadu16/Studkits-Projects/blob/main/intruder%20alert%20algo.svg)
 [Intruder Alert PNG](https://github.com/Mohitkadu16/Studkits-Projects/blob/main/algo%20of%20intruder%20alert.png)
