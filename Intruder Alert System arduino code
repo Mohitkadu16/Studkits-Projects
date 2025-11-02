@@ -1,0 +1,233 @@
+/* Intruder Alert System
+   Laser + LDR (1k resistor) + Buzzer + LED + I2C LCD
+   Pins (default):
+     LDR_PIN   A0
+     BUZZER    D9   (active buzzer: digital HIGH to sound)
+     LED       D8
+     LASER     D3   (Arduino controls Laser ON/OFF)
+     MUTE_BTN  D2   (toggle mute)
+     BL_BTN    D4   (toggle LCD backlight)
+   LCD: LiquidCrystal_I2C at 0x27 (change if needed)
+*/
+
+#include <Wire.h>
+#include <LiquidCrystal_I2C.h>
+
+#define LDR_PIN      A0
+#define BUZZER_PIN   9
+#define LED_PIN      8
+#define LASER_PIN    3
+
+#define MUTE_BTN_PIN 2    // button to toggle mute (active LOW -> connect button to GND)
+#define BL_BTN_PIN   4    // button to toggle LCD backlight (active LOW)
+
+LiquidCrystal_I2C lcd(0x27, 16, 2); // change address to 0x3F if your module uses that
+
+// smoothing params
+const int SAMPLES = 8;
+int readings[SAMPLES];
+int readIndex = 0;
+
+bool alarmOn = false;
+bool muted = false;
+bool backlightOn = true;
+
+unsigned long alarmStart = 0;
+const unsigned long ALARM_MAX_MS = 30UL * 1000UL; // auto-stop alarm after 30s
+
+// Threshold will be determined at startup by sampling (for 3 seconds)
+int threshold = 600;  // fallback
+int baselineBright = 900;
+
+unsigned long lastBtnMuteChange = 0;
+unsigned long lastBtnBLChange = 0;
+const unsigned long DEBOUNCE_MS = 200;
+
+void setup() {
+  pinMode(BUZZER_PIN, OUTPUT);
+  pinMode(LED_PIN, OUTPUT);
+  pinMode(LASER_PIN, OUTPUT);
+
+  pinMode(MUTE_BTN_PIN, INPUT_PULLUP); // button to GND
+  pinMode(BL_BTN_PIN, INPUT_PULLUP);
+
+  digitalWrite(LASER_PIN, HIGH); // ensure laser powered ON
+  digitalWrite(BUZZER_PIN, LOW);
+  digitalWrite(LED_PIN, LOW);
+
+  Serial.begin(9600);
+  lcd.init();
+  lcd.backlight();
+  backlightOn = true;
+  lcd.clear();
+  lcd.setCursor(0,0);
+  lcd.print("Intruder System");
+  lcd.setCursor(0,1);
+  lcd.print("Calibrating...");
+  delay(800);
+
+  // seed smoothing array with initial readings
+  for (int i = 0; i < SAMPLES; ++i) readings[i] = analogRead(LDR_PIN);
+
+  // Auto-calibrate baseline (assumes laser is aligned and beam ON during startup)
+  calibrateBaseline();
+
+  lcd.clear();
+  lcd.setCursor(0,0);
+  lcd.print("Ready");
+  updateLCDStatus(analogRead(LDR_PIN), "Ready");
+  delay(600);
+}
+
+void loop() {
+  // read smoothed LDR
+  int ldrValue = getSmoothedReading();
+
+  // print occasionally to serial
+  static unsigned long lastPrint = 0;
+  if (millis() - lastPrint > 500) {
+    Serial.print("LDR: ");
+    Serial.print(ldrValue);
+    Serial.print("  Th: ");
+    Serial.println(threshold);
+    lastPrint = millis();
+  }
+
+  // handle buttons (debounced)
+  handleButtons();
+
+  // alarm logic
+  if (!muted && ldrValue < threshold && !alarmOn) {
+    startAlarm();
+  }
+
+  if (alarmOn) {
+    // auto-stop after max duration
+    if (millis() - alarmStart > ALARM_MAX_MS) {
+      stopAlarm();
+    }
+  }
+
+  // update LCD status every loop (throttled visually)
+  static unsigned long lastLCDUpdate = 0;
+  if (millis() - lastLCDUpdate > 250) {
+    updateLCDStatus(ldrValue, alarmOn ? "ALARM" : (muted ? "MUTED" : "OK"));
+    lastLCDUpdate = millis();
+  }
+
+  delay(30); // small non-blocking pause
+}
+
+int getSmoothedReading() {
+  readings[readIndex] = analogRead(LDR_PIN);
+  readIndex = (readIndex + 1) % SAMPLES;
+  long sum = 0;
+  for (int i = 0; i < SAMPLES; ++i) sum += readings[i];
+  return (int)(sum / SAMPLES);
+}
+
+void calibrateBaseline() {
+  // Sample for 3 seconds to find a bright baseline (assume laser ON & aligned)
+  unsigned long start = millis();
+  long sum = 0;
+  int count = 0;
+  while (millis() - start < 3000) {
+    int v = analogRead(LDR_PIN);
+    sum += v;
+    count++;
+    delay(25);
+  }
+  baselineBright = (int)(sum / max(1, count));
+  // Choose threshold as a fraction below baseline. Adjust fraction if needed.
+  // For 1k resistor typical bright ~900 and blocked ~50-300, so using 60% of baseline is safe.
+  threshold = max(60, (int)(baselineBright * 0.60)); // ensure some minimum
+  Serial.print("Calibration done. Baseline: ");
+  Serial.print(baselineBright);
+  Serial.print("  Threshold: ");
+  Serial.println(threshold);
+}
+
+void startAlarm() {
+  alarmOn = true;
+  alarmStart = millis();
+  digitalWrite(LED_PIN, HIGH);
+  digitalWrite(BUZZER_PIN, HIGH); // active buzzer: HIGH to sound
+  Serial.println("!!! ALARM STARTED !!!");
+}
+
+void stopAlarm() {
+  alarmOn = false;
+  digitalWrite(LED_PIN, LOW);
+  digitalWrite(BUZZER_PIN, LOW);
+  Serial.println("Alarm stopped.");
+}
+
+void handleButtons() {
+  unsigned long now = millis();
+
+  // Mute toggle (D2) - active LOW button
+  if (digitalRead(MUTE_BTN_PIN) == LOW && now - lastBtnMuteChange > DEBOUNCE_MS) {
+    muted = !muted;
+    if (muted) {
+      stopAlarm();
+      Serial.println("System muted.");
+    } else {
+      Serial.println("System unmuted.");
+    }
+    lastBtnMuteChange = now;
+    // small wait so single press only toggles once
+    delay(120);
+  }
+
+  // Backlight toggle (D4)
+  if (digitalRead(BL_BTN_PIN) == LOW && now - lastBtnBLChange > DEBOUNCE_MS) {
+    backlightOn = !backlightOn;
+    if (backlightOn) lcd.backlight();
+    else lcd.noBacklight();
+    lastBtnBLChange = now;
+    delay(120);
+  }
+}
+
+void updateLCDStatus(int ldrValue, const char* state) {
+  // Line 1: LDR value and threshold
+  lcd.setCursor(0,0);
+  char line1[17];
+  snprintf(line1, sizeof(line1), "LDR:%4d Th:%4d", ldrValue, threshold);
+  lcd.print(line1);
+
+  // Line 2: State + simple timestamp (seconds)
+  lcd.setCursor(0,1);
+  char line2[17];
+  unsigned long seconds = millis() / 1000;
+  snprintf(line2, sizeof(line2), "%s  T:%5lus", state, seconds);
+  lcd.print(line2);
+}
+
+/*  Wiring Reminder:
+    LDR wiring (1k resistor):
+      5V ---- LDR ---- A0 ----- 1kΩ ----- GND
+
+    Laser:
+      VCC -> 5V
+      GND -> GND
+      SIGNAL -> D3 (laser ON when D3 HIGH)
+
+    Buzzer:
+      + -> D9
+      - -> GND   (active buzzer)
+
+    LED:
+      Anode (+) -> D8 through 220Ω
+      Cathode -> GND
+
+    Buttons (optional):
+      MUTE button: one side -> D2, other -> GND (uses INPUT_PULLUP)
+      Backlight button: one side -> D4, other -> GND
+
+    LCD (I2C):
+      VCC -> 5V
+      GND -> GND
+      SDA -> A4
+      SCL -> A5
+*/
